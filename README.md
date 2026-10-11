@@ -17,10 +17,7 @@ API RESTful que consume el servicio de geolocalización **Nominatim** (OpenStree
 5. [Endpoints de la API](#5-endpoints-de-la-api)
 6. [Ejemplos de Peticiones](#6-ejemplos-de-peticiones)
 7. [Ejecución Local](#7-ejecución-local)
-8. [Errores Detectados y Correcciones](#8-errores-detectados-y-correcciones)
-9. [Mejoras Aplicadas](#9-mejoras-aplicadas)
-10. [Estructura del Proyecto](#10-estructura-del-proyecto)
-11. [Referencias](#11-referencias)
+8. [Estructura del Proyecto](#8-estructura-del-proyecto)
 
 ---
 
@@ -267,8 +264,8 @@ curl -X GET "http://localhost:8080/api/v1/geolocalizacion/reversa?latitud=999&lo
 #### 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/Dark-Itan/nominatim-geolocalizacion-api.git
-cd nominatim-geolocalizacion-api
+git clone https://github.com/Dark-Itan/Nominatim-Api.git
+cd Nominatim-Api
 ```
 
 #### 2. Configurar variables de entorno
@@ -303,211 +300,7 @@ Debería mostrar: `Nominatim Geolocalizacion API - Corriendo correctamente`
 
 ---
 
-## 8. Errores Detectados y Correcciones
-
-Durante el desarrollo se detectaron **7 errores** en el código propuesto por el PDF. A continuación se documentan las correcciones aplicadas:
-
-### 8.1 Error: `@Value` en vez de `@ConfigurationProperties`
-
-**Código original (PDF):**
-```java
-@Value("${nominatim.url}")
-private String nominatimUrl;
-
-@Value("${nominatim.user-agent}")
-private String userAgent;
-```
-
-**Problema:** `@Value` dispersa la configuración en múltiples campos.
-
-**Corrección:**
-```java
-@Configuration
-@ConfigurationProperties(prefix = "nominatim")
-public class NominatimProperties {
-    private String url;
-    private String userAgent;
-    private int timeout = 5000;
-}
-```
-
-**Justificación:** `@ConfigurationProperties` centraliza la configuración, es más limpio y testeable.
-
----
-
-### 8.2 Error: Sin timeouts en el RestClient
-
-**Código original (PDF):**
-```java
-return builder
-    .baseUrl(nominatimUrl)
-    .defaultHeader("User-Agent", userAgent)
-    .build();
-```
-
-**Problema:** Si Nominatim no responde, la app se cuelga indefinidamente.
-
-**Corrección:**
-```java
-HttpClient httpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofMillis(properties.getTimeout()))
-        .build();
-
-JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-factory.setReadTimeout(Duration.ofMillis(properties.getTimeout()));
-```
-
-**Justificación:** Los timeouts evitan que la aplicación se cuelgue.
-
----
-
-### 8.3 Error: Sin `@Validated` en el Controller
-
-**Código original (PDF):**
-```java
-@RestController
-@RequestMapping("/api/v1/geolocalizacion")
-public class GeolocalizacionController {
-    @GetMapping("/buscar")
-    public ResponseEntity<List<UbicacionResponseDTO>> buscar(@RequestParam String direccion) {
-```
-
-**Problema:** No valida los parámetros de entrada.
-
-**Corrección:**
-```java
-@RestController
-@RequestMapping("/api/v1/geolocalizacion")
-@Validated
-public class GeolocalizacionController {
-    @GetMapping("/buscar")
-    public ResponseEntity<List<UbicacionResponseDTO>> buscar(
-            @RequestParam
-            @NotBlank(message = "La direccion es obligatoria")
-            @Size(min = 3, max = 200, message = "La direccion debe tener entre 3 y 200 caracteres")
-            String direccion) {
-```
-
-**Justificación:** `@Validated` activa las validaciones de Bean Validation en los parámetros.
-
----
-
-### 8.4 Error: Sin validación de coordenadas
-
-**Código original (PDF):**
-```java
-public ResponseEntity<UbicacionResponseDTO> reversa(
-        @RequestParam Double latitud,
-        @RequestParam Double longitud) {
-```
-
-**Problema:** No valida que las coordenadas estén en el rango correcto.
-
-**Corrección:**
-```java
-@RequestParam
-@DecimalMin(value = "-90.0", message = "La latitud debe ser mayor o igual a -90")
-@DecimalMax(value = "90.0", message = "La latitud debe ser menor o igual a 90")
-Double latitud,
-
-@RequestParam
-@DecimalMin(value = "-180.0", message = "La longitud debe ser mayor o igual a -180")
-@DecimalMax(value = "180.0", message = "La longitud debe ser menor o igual a 180")
-Double longitud
-```
-
-**Justificación:** Las coordenadas válidas están en rangos específicos (-90 a 90 para latitud, -180 a 180 para longitud).
-
----
-
-### 8.5 Error: `RuntimeException` genérica
-
-**Código original (PDF):**
-```java
-if (resultado == null || resultado.isEmpty()) {
-    throw new RuntimeException("Producto no encontrado con ID: " + id);
-}
-```
-
-**Problema:** `RuntimeException` es muy genérica, no da contexto.
-
-**Corrección:**
-```java
-public class GeolocalizacionException extends RuntimeException {
-    public GeolocalizacionException(String message) {
-        super(message);
-    }
-
-    public GeolocalizacionException(String message, Throwable cause) {
-        super(message, cause);
-    }
-}
-```
-
-**Justificación:** Una excepción personalizada es más semántica y permite manejo específico.
-
----
-
-### 8.6 Error: Sin `GlobalExceptionHandler`
-
-**Código original (PDF):** No tiene manejo centralizado de errores.
-
-**Problema:** Cada Controller maneja errores de forma diferente.
-
-**Corrección:**
-```java
-@ControllerAdvice
-public class GlobalExceptionHandler {
-    @ExceptionHandler(GeolocalizacionException.class)
-    public ResponseEntity<ErrorResponse> handleGeolocalizacionException(GeolocalizacionException ex) {
-        // ...
-    }
-}
-```
-
-**Justificación:** Centraliza el manejo de errores en un solo lugar.
-
----
-
-### 8.7 Error: Sin logs
-
-**Código original (PDF):** No tiene logs.
-
-**Problema:** Dificulta el debugging y monitoreo.
-
-**Corrección:**
-```java
-private static final Logger logger = LoggerFactory.getLogger(GeolocalizacionServiceImpl.class);
-
-logger.info("Buscando ubicacion por direccion: {}", direccion);
-logger.warn("No se encontraron resultados para la direccion: {}", direccion);
-logger.error("Error al buscar ubicacion por direccion {}: {}", direccion, ex.getMessage());
-```
-
-**Justificación:** Los logs son esenciales para debugging y monitoreo en producción.
-
----
-
-## 9. Mejoras Aplicadas
-
-Además de corregir los errores, se aplicaron las siguientes mejoras:
-
-| # | Mejora | Justificación |
-|---|--------|---------------|
-| 1 | `@ConfigurationProperties` | Configuración centralizada y tipada |
-| 2 | Timeouts configurables | Evita que la app se cuelgue |
-| 3 | `GlobalExceptionHandler` | Manejo centralizado de errores |
-| 4 | Mensajes humanos vs técnicos | UX y seguridad |
-| 5 | Logs estructurados con SLF4J | Debugging y monitoreo |
-| 6 | Validación con Bean Validation | Valida antes de llamar a Nominatim |
-| 7 | Separación `service/` y `service/impl/` | Principio de Inversión de Dependencias |
-| 8 | `@JsonIgnoreProperties` | Ignora campos desconocidos de Nominatim |
-| 9 | Endpoint raíz | Facilita verificar que la app está corriendo |
-| 10 | Variables de entorno | No exponer configuración |
-
----
-
-## 10. Estructura del Proyecto
+## 8. Estructura del Proyecto
 
 ```
 nominatim-geolocalizacion-api/
@@ -550,17 +343,6 @@ nominatim-geolocalizacion-api/
 ├── settings.gradle
 └── README.md
 ```
-
----
-
-## 11. Referencias
-
-- Nominatim. (2026). *Nominatim Documentation*. https://nominatim.org/release-docs/latest/
-- OpenStreetMap Foundation. (2026). *Nominatim Usage Policy*. https://operations.osmfoundation.org/policies/nominatim/
-- Spring Boot. (2025). *Calling REST Services*. https://docs.spring.io/spring-boot/reference/io/rest-client.html
-- Spring Boot. (2025). *Validation*. https://docs.spring.io/spring-boot/reference/io/validation.html
-- Spring Security. (2025). *CORS Configuration*. https://docs.spring.io/spring-security/reference/servlet/integrations/cors.html
-- Baeldung. (2025). *RestClient vs. WebClient vs. RestTemplate*. https://www.baeldung.com/spring-restclient-vs-webclient-vs-resttemplate
 
 ---
 
